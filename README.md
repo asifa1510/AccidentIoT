@@ -26,7 +26,7 @@ A compact IoT project using **ESP32**, **MPU6050**, **GPS**, and **Piezo sensor*
    - **Minor:** ≥ 2 g  
    - **Moderate:** ≥ 3 g  
    - **Severe:** ≥ 5 g  
-6. On crash → buzzer ON, fuel OFF, SMS (optional).
+6. On crash → buzzer ON, fuel OFF, SMS.
 
 ---
 
