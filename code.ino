@@ -205,4 +205,4 @@ void loop() {
     if (gps.location.isUpdated()) { lastLat = gps.location.lat(); lastLng = gps.location.lng(); }
     if (gps.speed.isUpdated())    { lastSpeedKmph = gps.speed.kmph(); }
   }
-}
+} 
