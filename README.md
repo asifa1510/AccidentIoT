@@ -3,7 +3,7 @@
 A compact IoT project using **ESP32**, **MPU6050**, **GPS**, and **Piezo sensor** for **real-time crash detection** with automatic **fuel cutoff**, **buzzer alert**, and **Twilio SMS** for alert reporting.
 
 ---
-
+ 
 ## Hardware Setup
 | Component | ESP32 Pin / Power | Purpose |
 |------------|------------------|----------|
