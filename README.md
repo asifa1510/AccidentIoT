@@ -3,7 +3,7 @@
 A compact IoT project using **ESP32**, **MPU6050**, **GPS**, and **Piezo sensor** for **real-time crash detection** with automatic **fuel cutoff**, **buzzer alert**, and **Twilio SMS** for alert reporting.
 
 ---
- 
+
 ## Hardware Setup
 | Component | ESP32 Pin / Power | Purpose |
 |------------|------------------|----------|
@@ -30,17 +30,15 @@ A compact IoT project using **ESP32**, **MPU6050**, **GPS**, and **Piezo sensor*
 
 ---
 
-##  What Makes This Approach Unique
-- **Hybrid sensing:** Combines *MPU6050 motion data* and *piezoelectric presence detection* to eliminate false alarms.  
-- **True dynamic severity estimation:** Evaluates acceleration, jerk, and angular velocity instead of a single threshold — mimicking real crash dynamics.  
-- **Hardware-level safety cut-off:** MOSFET-controlled “fuel” LED demonstrates instant power isolation, not just software alerting.  
-- **Standalone intelligence:** Works without external servers or apps; real-time response is entirely local.  
-- **Demo-accurate tuning:** Can simulate genuine crash signatures through precise thresholding rather than random vibration.
+## NOVELTY
+- Hybrid motion + presence sensing  
+- Multi-parameter crash physics (accel/jerk/gyro)  
+- Hardware-level fuel cutoff  
+- Fully local offline processing  
+- Realistic crash-signature tuning  
 
 ---
 
 <img width="500" height="500" alt="image" src="https://github.com/user-attachments/assets/fc6608b9-73db-4ae1-88b8-f4aab9f4d7e8" />
 
-
 <img width="600" height="600" alt="MOSFET" src="https://github.com/user-attachments/assets/7bf03624-39d5-435e-bf6e-73b8a9550ae6" />
-
