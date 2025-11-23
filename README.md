@@ -31,11 +31,11 @@ A compact IoT project using **ESP32**, **MPU6050**, **GPS**, and **Piezo sensor*
 ---
 
 ## NOVELTY
-- Hybrid motion + presence sensing  
-- Multi-parameter crash physics (accel/jerk/gyro)  
-- Hardware-level fuel cutoff  
-- Fully local offline processing  
-- Realistic crash-signature tuning  
+- Dual-layer crash validation using motion + seat-presence sensing (piezo sensor) 
+- Physics-based crash modeling using acceleration, jerk, and angular rotation together  
+- Gravity-compensated IMU processing at 200 Hz for true linear acceleration  
+- Actual hardware safety action via **MOSFET-based fuel cutoff simulation**
+ 
 
 ---
 
