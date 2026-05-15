@@ -255,9 +255,11 @@ void loop(){
   if(nowMs-win.start_ms > IMPACT_WINDOW_MS){
 
     String sev=classifySeverity(win.a_peak,win.j_peak,win.w_peak);
-
-    if(sev!="NONE" && seatOccupied && !waitingWearable &&
-       (nowMs-lastTriggerMs>LATCH_HOLDOFF_MS)){
+if (sev!="NONE" &&
+   seatOccupied &&
+   !waitingWearable &&
+   lastSpeedKmph >= 8 &&
+   (nowMs-lastTriggerMs>LATCH_HOLDOFF_MS)){
 
       Serial.println("Vehicle impact detected");
 
