@@ -66,6 +66,13 @@ void sendBTAccident(double lat, double lng) {
   SerialBT.flush();
   Serial.println("🔵 BT -> " + msg);
 }
+String emergencyNumber = "+911234567890";
+String fireStationNumber = "+919876543210";
+
+void sendSMS(String number, String message) {
+  Serial.println("Sending SMS to: " + number);
+  Serial.println(message);
+}
 
 String classifySeverity(float a, float j, float w) {
   if (a >= A_SEV_G || j >= J_SEV || w >= W_SEV) return "SEVERE";
@@ -80,6 +87,18 @@ void emitAccident(const String& sev, float a, float j, float w) {
   Serial.printf("ACCIDENT,%s,%.2f,%.1f,%.0f,%.1f,%.6f,%.6f\n",
                 sev.c_str(), a, j, w, lastSpeedKmph, lat, lng);
   sendBTAccident(lat, lng);
+  String mapsLink = "https://www.google.com/maps?q=" 
+                  + String(lat,6) + "," + String(lng,6);
+
+  String message = "SEVERE ACCIDENT DETECTED!\n";
+  message += "Possible fire risk.\n";
+  message += mapsLink;
+
+  sendSMS(emergencyNumber, message);
+
+  if (sev == "SEVERE") {
+    sendSMS(fireStationNumber, message);
+  }
   buzz(800);
 }
 
