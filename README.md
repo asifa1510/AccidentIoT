@@ -76,10 +76,29 @@ The system consists of a wearable unit and a vehicle-mounted unit. Sensors like 
 - Embedded C++
 
 ## How to Run
-1. Connect sensors to ESP32/Arduino
-2. Upload the firmware code
-3. Power the system
-4. Monitor output via serial console or alert system
+### 1. Prerequisites & Software Installation
+Before uploading the firmware, ensure you have the *Arduino IDE* installed. You can download it from the official [Arduino Website](https://www.arduino.cc/en/software).
+
+### 2. Configure Arduino IDE for ESP32
+If your Arduino IDE isn't configured for ESP32 boards yet:
+1. Navigate to *File* > *Preferences*.
+2. Paste the following URL into the *Additional Boards Manager URLs* text box:
+   https://dl.espressif.com/dl/package_esp32_index.json
+3. Go to *Tools* > *Board* > *Boards Manager...*
+4. Search for esp32 by *Espressif Systems* and click *Install*.
+
+### 3. Install Required Libraries
+This project relies on external hardware communication libraries. Go to *Sketch* > *Include Library* > *Manage Libraries...*, search for, and install:
+* *Adafruit MPU6050* (along with its dependencies: Adafruit BusIO and Adafruit Unified Sensor)
+* *TinyGPS++* (by Mikal Hart)
+* *LiquidCrystal_I2C* (for I2C interface displays)
+
+### 4. Clone and Flash the Firmware
+1. Clone this repository onto your machine:
+```bash
+   git clone https://github.com/asifa1510/AccidentIoT.git
+```
+
 
 ## Future Improvements
 - Cloud-based alert system
