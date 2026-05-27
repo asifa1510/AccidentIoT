@@ -1,8 +1,14 @@
 #include <Wire.h>
 #include <MPU6050.h>
 #include <TinyGPSPlus.h>
-#include <BluetoothSerial.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 #include "driver/adc.h"
+
+#define SERVICE_UUID        "4fa87100-87ee-11e7-802c-09173f13e4c6"
+#define CHARACTERISTIC_UUID "4fa87101-87ee-11e7-802c-09173f13e4c6"
 
 const int FUEL_GATE_PIN = 23;
 const int BUZZER_PIN = 18;
@@ -15,7 +21,22 @@ const double LNG = 80.156194;
 const int GPS_TX = 17;
 const uint32_t GPS_BAUD = 9600;
 
-BluetoothSerial SerialBT;
+BLECharacteristic *pCharacteristic = nullptr;
+bool deviceConnected = false;
+
+class MyServerCallbacks: public BLEServerCallbacks {
+public:
+    void onConnect(BLEServer* pServer) override {
+      deviceConnected = true;
+      Serial.println("🔵 BLE Client Connected");
+    }
+
+    void onDisconnect(BLEServer* pServer) override {
+      deviceConnected = false;
+      Serial.println("🔴 BLE Client Disconnected - Restarting Advertising");
+      BLEDevice::startAdvertising();
+    }
+};
 
 const int PIEZO_ADC_PIN = 34;
 const adc_attenuation_t PIEZO_ATTEN = ADC_11db;
@@ -59,12 +80,15 @@ static inline float lpf(float prev, float x, float alpha){ return alpha*prev + (
 void setFuel(bool on){ digitalWrite(FUEL_GATE_PIN, on ? HIGH : LOW); }
 void buzz(int ms){ digitalWrite(BUZZER_PIN, HIGH); delay(ms); digitalWrite(BUZZER_PIN, LOW); }
 
-void sendBTAccident(double lat, double lng) {
-  String msg = "ACCIDENT," + String(lat,6) + "," + String(lng,6);
-  SerialBT.print(msg);
-  SerialBT.print("\r\n");   
-  SerialBT.flush();
-  Serial.println("🔵 BT -> " + msg);
+void sendBLEAccident(double lat, double lng) {
+  String msg = "ACCIDENT," + String(lat,6) + "," + String(lng,6) + "\r\n";
+  if (deviceConnected && pCharacteristic != nullptr) {
+    pCharacteristic->setValue(msg.c_str());
+    pCharacteristic->notify();
+    Serial.println("🔵 BLE -> " + msg);
+  } else {
+    Serial.println("🔵 BLE (Not Connected) -> " + msg);
+  }
 }
 
 String classifySeverity(float a, float j, float w) {
@@ -79,18 +103,39 @@ void emitAccident(const String& sev, float a, float j, float w) {
   double lng = gps.location.isValid() ? gps.location.lng() : LNG;
   Serial.printf("ACCIDENT,%s,%.2f,%.1f,%.0f,%.1f,%.6f,%.6f\n",
                 sev.c_str(), a, j, w, lastSpeedKmph, lat, lng);
-  sendBTAccident(lat, lng);
+  sendBLEAccident(lat, lng);
   buzz(800);
 }
 
 void setup() {
   Serial.begin(115200);
-  SerialBT.begin("ESP32_Accident_BT");
-  delay(200);
-  Serial.println("Bluetooth ready");
+  // Initialize BLE
+  BLEDevice::init("ESP32_Accident_BLE");
+  BLEServer *pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
 
-  SerialBT.print("BT_READY\r\n");
-  SerialBT.flush();
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID,
+                      BLECharacteristic::PROPERTY_READ   |
+                      BLECharacteristic::PROPERTY_WRITE  |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+
+  pCharacteristic->addDescriptor(new BLE2902());
+  pCharacteristic->setValue("BT_READY\r\n");
+
+  pService->start();
+
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+
+  Serial.println("BLE Ready and Advertising");
 
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(FUEL_GATE_PIN, OUTPUT);
@@ -127,7 +172,7 @@ void loop() {
     if (c == 'T' || c == 't') {
       double lat = gps.location.isValid() ? gps.location.lat() : LAT;
       double lng = gps.location.isValid() ? gps.location.lng() : LNG;
-      sendBTAccident(lat, lng);
+      sendBLEAccident(lat, lng);
     }
   }
 
