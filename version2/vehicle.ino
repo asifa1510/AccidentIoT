@@ -41,6 +41,7 @@ const uint32_t SAMPLE_US = (uint32_t)(1000000.0f / SAMPLE_HZ);
 const uint32_t IMPACT_WINDOW_MS = 150;
 const uint32_t VALIDATION_WINDOW_MS = 2000;
 const uint32_t LATCH_HOLDOFF_MS = 10000;
+const uint32_t FUEL_RESTORE_MS = 15000;
 
 const float A_MINOR_G = 2.5f, J_MINOR = 5.0f, W_MINOR = 250.0f;
 const float A_MOD_G = 4.0f, J_MOD = 8.0f, W_MOD = 300.0f;
@@ -71,6 +72,8 @@ float seatHP=0,seatEnergyAccum=0,seatEnergy=0;
 int seatCount=0;
 
 uint32_t lastTriggerMs=0;
+bool fuelCutoffActive = false;
+uint32_t fuelCutoffTime = 0;
 
 struct PeakBuf { float a_peak,j_peak,w_peak; uint32_t start_ms; } win;
 
@@ -281,11 +284,14 @@ if (sev!="NONE" &&
 
         lastTriggerMs=millis();
 
-        setFuel(false);
+  setFuel(false);
 
-        buzz(1000);
+fuelCutoffActive = true;
+fuelCutoffTime = millis();
 
-        emitAccident("CONFIRMED",win.a_peak,win.j_peak,win.w_peak);
+buzz(1000);
+
+emitAccident("CONFIRMED",win.a_peak,win.j_peak,win.w_peak);
 
       }else{
 
@@ -302,5 +308,14 @@ if (sev!="NONE" &&
 
     Serial.printf("a=%.2fg jerk=%5.1fg/s w=%3.0fdps seat=%c IR=%d\n",
                   a_smooth,jerk,w,seatOccupied?'Y':'N',irPulseCount);
+  }
+    if (fuelCutoffActive &&
+      millis() - fuelCutoffTime >= FUEL_RESTORE_MS) {
+
+    setFuel(true);
+
+    fuelCutoffActive = false;
+
+    Serial.println("Fuel restored automatically");
   }
 }
