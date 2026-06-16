@@ -3,6 +3,18 @@
 #include <TinyGPSPlus.h>
 #include <BluetoothSerial.h>
 #include "driver/adc.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+// ================= WIFI & TWILIO CREDENTIALS =================
+// ⚠️ WARNING: Do NOT put real credentials here when pushing to GitHub!
+const char* ssid = "YOUR_WIFI_NAME";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+const String twilio_account_sid = "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+const String twilio_auth_token = "your_auth_token_here";
+const String twilio_from_number = "+12345678901"; // Placeholder for Twilio Number
+// =============================================================
 
 const int FUEL_GATE_PIN = 23;
 const int BUZZER_PIN = 18;
@@ -41,31 +53,74 @@ const float A_SEV_G = 6.0f, J_SEV = 15.0f, W_SEV = 500.0f;
 MPU6050 mpu;
 TinyGPSPlus gps;
 
-float gX=0, gY=0, gZ=1.0f;
-float prevA_smooth=0.0f;
-uint32_t lastSample=0, lastDbg=0;
+float gX = 0, gY = 0, gZ = 1.0f;
+float prevA_smooth = 0.0f;
+uint32_t lastSample = 0, lastDbg = 0;
 
-float axBias=0, ayBias=0, azBias=0;
+float axBias = 0, ayBias = 0, azBias = 0;
 bool seatOccupied = true;
-float seatHP=0, seatEnergyAccum=0, seatEnergy=0; 
-int seatCount=0;
+float seatHP = 0, seatEnergyAccum = 0, seatEnergy = 0;
+int seatCount = 0;
 
-uint32_t lastTriggerMs=0;
-double lastLat=0, lastLng=0, lastSpeedKmph=0;
+uint32_t lastTriggerMs = 0;
+double lastLat = 0, lastLng = 0, lastSpeedKmph = 0;
 
-struct PeakBuf { float a_peak, j_peak, w_peak; uint32_t start_ms; } win;
+struct PeakBuf {
+  float a_peak, j_peak, w_peak;
+  uint32_t start_ms;
+} win;
 
-static inline float lpf(float prev, float x, float alpha){ return alpha*prev + (1.0f-alpha)*x; }
-void setFuel(bool on){ digitalWrite(FUEL_GATE_PIN, on ? HIGH : LOW); }
-void buzz(int ms){ digitalWrite(BUZZER_PIN, HIGH); delay(ms); digitalWrite(BUZZER_PIN, LOW); }
+static inline float lpf(float prev, float x, float alpha) { return alpha * prev + (1.0f - alpha) * x; }
+void setFuel(bool on) { digitalWrite(FUEL_GATE_PIN, on ? HIGH : LOW); }
+void buzz(int ms) {
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(ms);
+  digitalWrite(BUZZER_PIN, LOW);
+}
 
 void sendBTAccident(double lat, double lng) {
-  String msg = "ACCIDENT," + String(lat,6) + "," + String(lng,6);
+  String msg = "ACCIDENT," + String(lat, 6) + "," + String(lng, 6);
   SerialBT.print(msg);
-  SerialBT.print("\r\n");   
+  SerialBT.print("\r\n");
   SerialBT.flush();
   Serial.println("🔵 BT -> " + msg);
 }
+
+String emergencyNumber = "+911234567890";
+String fireStationNumber = "+919876543210";
+
+// ================= UPDATED sendSMS FUNCTION =================
+void sendSMS(String toNumber, String message) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String url = "https://api.twilio.com/2010-04-01/Accounts/" + twilio_account_sid + "/Messages.json";
+    
+    http.begin(url);
+    http.setAuthorization(twilio_account_sid.c_str(), twilio_auth_token.c_str());
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    
+    // URL Encoding for proper message delivery
+    message.replace(" ", "+");
+    message.replace("\n", "%0A"); 
+    
+    String postData = "To=" + toNumber + "&From=" + twilio_from_number + "&Body=" + message;
+    
+    Serial.println("Sending SMS to " + toNumber + " via Twilio...");
+    int httpResponseCode = http.POST(postData);
+    
+    if (httpResponseCode > 0) {
+      Serial.print("Success! HTTP Code: ");
+      Serial.println(httpResponseCode);
+    } else {
+      Serial.print("Error sending SMS. HTTP Error: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+  } else {
+    Serial.println("Error: Wi-Fi not connected. Cannot send SMS.");
+  }
+}
+// =============================================================
 
 String classifySeverity(float a, float j, float w) {
   if (a >= A_SEV_G || j >= J_SEV || w >= W_SEV) return "SEVERE";
@@ -74,12 +129,25 @@ String classifySeverity(float a, float j, float w) {
   return "NONE";
 }
 
-void emitAccident(const String& sev, float a, float j, float w) {
+void emitAccident(const String &sev, float a, float j, float w) {
   double lat = gps.location.isValid() ? gps.location.lat() : LAT;
   double lng = gps.location.isValid() ? gps.location.lng() : LNG;
+  
   Serial.printf("ACCIDENT,%s,%.2f,%.1f,%.0f,%.1f,%.6f,%.6f\n",
                 sev.c_str(), a, j, w, lastSpeedKmph, lat, lng);
+  
   sendBTAccident(lat, lng);
+  String mapsLink = "https://maps.google.com/?q=" + String(lat, 6) + "," + String(lng, 6);
+
+  String message = "SEVERE ACCIDENT DETECTED!\n";
+  message += "Possible fire risk.\n";
+  message += mapsLink;
+
+  sendSMS(emergencyNumber, message);
+
+  if (sev == "SEVERE") {
+    sendSMS(fireStationNumber, message);
+  }
   buzz(800);
 }
 
@@ -88,6 +156,16 @@ void setup() {
   SerialBT.begin("ESP32_Accident_BT");
   delay(200);
   Serial.println("Bluetooth ready");
+
+  // ================= CONNECT TO WIFI =================
+  Serial.print("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected!");
+  // ====================================================
 
   SerialBT.print("BT_READY\r\n");
   SerialBT.flush();
@@ -100,22 +178,29 @@ void setup() {
 
   Wire.begin(I2C_SDA, I2C_SCL);
   mpu.initialize();
-  if (!mpu.testConnection()) { Serial.println("MPU6050 not found!"); while(true) delay(1000); }
+  if (!mpu.testConnection()) {
+    Serial.println("MPU6050 not found!");
+    while (true) delay(1000);
+  }
 
   Serial.print("Calibrating...");
-  long axSum=0, aySum=0, azSum=0;
-  for (int i=0; i<200; i++) {
-    int16_t ax,ay,az,gx,gy,gz;
-    mpu.getMotion6(&ax,&ay,&az,&gx,&gy,&gz);
-    axSum+=ax; aySum+=ay; azSum+=az;
+  long axSum = 0, aySum = 0, azSum = 0;
+  for (int i = 0; i < 200; i++) {
+    int16_t ax, ay, az, gx, gy, gz;
+    mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    axSum += ax;
+    aySum += ay;
+    azSum += az;
     delay(5);
   }
-  axBias=axSum/200.0f; ayBias=aySum/200.0f; azBias=azSum/200.0f;
+  axBias = axSum / 200.0f;
+  ayBias = aySum / 200.0f;
+  azBias = azSum / 200.0f;
 
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
   gpsSerial.setRxBufferSize(2048);
 
-  win = {0,0,0, millis()};
+  win = {0, 0, 0, millis()};
   lastSample = micros();
 
   Serial.println(" System Ready");
@@ -135,40 +220,49 @@ void loop() {
   if (nowUs - lastSample < SAMPLE_US) {
     while (gpsSerial.available()) {
       gps.encode(gpsSerial.read());
-      if (gps.location.isUpdated()) { lastLat = gps.location.lat(); lastLng = gps.location.lng(); }
-      if (gps.speed.isUpdated()) { lastSpeedKmph = gps.speed.kmph(); }
+      if (gps.location.isUpdated()) {
+        lastLat = gps.location.lat();
+        lastLng = gps.location.lng();
+      }
+      if (gps.speed.isUpdated()) {
+        lastSpeedKmph = gps.speed.kmph();
+      }
     }
     return;
   }
+  
   lastSample += SAMPLE_US;
   float dt = SAMPLE_US / 1e6f;
   uint32_t nowMs = millis();
 
   int16_t axr, ayr, azr, gxr, gyr, gzr;
-  mpu.getMotion6(&axr,&ayr,&azr,&gxr,&gyr,&gzr);
-  float ax=(axr-axBias)/ACC_SENS, ay=(ayr-ayBias)/ACC_SENS, az=(azr-azBias)/ACC_SENS;
-  float gx=gxr/GYRO_SENS, gy=gyr/GYRO_SENS, gz=gzr/GYRO_SENS;
-  float w = sqrtf(gx*gx+gy*gy+gz*gz);
+  mpu.getMotion6(&axr, &ayr, &azr, &gxr, &gyr, &gzr);
+  float ax = (axr - axBias) / ACC_SENS, ay = (ayr - ayBias) / ACC_SENS, az = (azr - azBias) / ACC_SENS;
+  float gx = gxr / GYRO_SENS, gy = gyr / GYRO_SENS, gz = gzr / GYRO_SENS;
+  float w = sqrtf(gx * gx + gy * gy + gz * gz);
 
   gX = lpf(gX, ax, GRAVITY_ALPHA);
   gY = lpf(gY, ay, GRAVITY_ALPHA);
   gZ = lpf(gZ, az, GRAVITY_ALPHA);
-  float linX=ax-gX, linY=ay-gY, linZ=az-gZ;
-  float a = sqrtf(linX*linX + linY*linY + linZ*linZ);
+  float linX = ax - gX, linY = ay - gY, linZ = az - gZ;
+  float a = sqrtf(linX * linX + linY * linY + linZ * linZ);
   float a_smooth = lpf(prevA_smooth, a, A_SMOOTH_ALPHA);
-  float jerk = (a_smooth - prevA_smooth)/dt;
+  float jerk = (a_smooth - prevA_smooth) / dt;
   prevA_smooth = a_smooth;
 
   static int prevSeat = 0;
   int x = analogRead(PIEZO_ADC_PIN);
-  int dx = x - prevSeat; prevSeat = x;
+  int dx = x - prevSeat;
+  prevSeat = x;
   seatHP = SEAT_HP_ALPHA * (seatHP + dx);
   float seatAbs = fabsf(seatHP);
   seatEnergyAccum += seatAbs;
   seatCount++;
+  
   if (seatCount >= SEAT_EN_AVG_SAMPLES) {
     seatEnergy = seatEnergyAccum / seatCount;
-    seatEnergyAccum = 0; seatCount = 0;
+    seatEnergyAccum = 0;
+    seatCount = 0;
     seatOccupied = (seatEnergy >= SEAT_ENERGY_THRESH);
   }
 
@@ -180,24 +274,28 @@ void loop() {
       buzz(1000);
       emitAccident(sev, win.a_peak, win.j_peak, win.w_peak);
     }
-    win = {0,0,0, nowMs};
+    win = {0, 0, 0, nowMs};
   }
 
   if (a_smooth > win.a_peak) win.a_peak = a_smooth;
   if (fabsf(jerk) > win.j_peak) win.j_peak = fabsf(jerk);
   if (w > win.w_peak) win.w_peak = w;
 
-
   if (nowMs - lastDbg > 500) {
     lastDbg = nowMs;
     Serial.printf("a=%.2fg jerk=%5.1fg/s w=%3.0fdps seat=%c E=%.1f gps=%c spd=%.1f\n",
-                  a_smooth, jerk, w, seatOccupied?'Y':'N', seatEnergy,
-                  gps.location.isValid()?'Y':'N', lastSpeedKmph);
+                  a_smooth, jerk, w, seatOccupied ? 'Y' : 'N', seatEnergy,
+                  gps.location.isValid() ? 'Y' : 'N', lastSpeedKmph);
   }
 
   while (gpsSerial.available()) {
     gps.encode(gpsSerial.read());
-    if (gps.location.isUpdated()) { lastLat = gps.location.lat(); lastLng = gps.location.lng(); }
-    if (gps.speed.isUpdated()) { lastSpeedKmph = gps.speed.kmph(); }
+    if (gps.location.isUpdated()) {
+      lastLat = gps.location.lat();
+      lastLng = gps.location.lng();
+    }
+    if (gps.speed.isUpdated()) {
+      lastSpeedKmph = gps.speed.kmph();
+    }
   }
 }
