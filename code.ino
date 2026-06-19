@@ -1,8 +1,12 @@
+//install SparkFun MAX3010x Pulse and Proximity Sensor Library
+
 #include <Wire.h>
 #include <MPU6050.h>
 #include <TinyGPSPlus.h>
 #include <BluetoothSerial.h>
 #include "driver/adc.h"
+#include "MAX30105.h"
+#include "heartRate.h"
 
 const int FUEL_GATE_PIN = 23;
 const int BUZZER_PIN = 18;
@@ -40,7 +44,10 @@ const float A_SEV_G = 6.0f, J_SEV = 15.0f, W_SEV = 500.0f;
 
 MPU6050 mpu;
 TinyGPSPlus gps;
+MAX30105 particleSensor;
 
+int bpm=0; int latestValidBPM=0;
+float beatsPerMinute; long lastBeat=0;
 float gX=0, gY=0, gZ=1.0f;
 float prevA_smooth=0.0f;
 uint32_t lastSample=0, lastDbg=0;
@@ -59,8 +66,9 @@ static inline float lpf(float prev, float x, float alpha){ return alpha*prev + (
 void setFuel(bool on){ digitalWrite(FUEL_GATE_PIN, on ? HIGH : LOW); }
 void buzz(int ms){ digitalWrite(BUZZER_PIN, HIGH); delay(ms); digitalWrite(BUZZER_PIN, LOW); }
 
-void sendBTAccident(double lat, double lng) {
-  String msg = "ACCIDENT," + String(lat,6) + "," + String(lng,6);
+void sendBTAccident(double lat, double lng)
+{
+  String msg = "ACCIDENT," + String(lat,6) + "," + String(lng,6) + "," + String(latestValidBPM) + "," + getHealthStatus();
   SerialBT.print(msg);
   SerialBT.print("\r\n");   
   SerialBT.flush();
@@ -74,13 +82,74 @@ String classifySeverity(float a, float j, float w) {
   return "NONE";
 }
 
-void emitAccident(const String& sev, float a, float j, float w) {
+//void emitAccident(const String& sev, float a, float j, float w) {
+  //double lat = gps.location.isValid() ? gps.location.lat() : LAT;
+  //double lng = gps.location.isValid() ? gps.location.lng() : LNG;
+  //Serial.printf("ACCIDENT,%s,%.2f,%.1f,%.0f,%.1f,%.6f,%.6f\n",
+  //              sev.c_str(), a, j, w, lastSpeedKmph, lat, lng);
+  //sendBTAccident(lat, lng);
+  //buzz(800);
+//}
+
+void emitAccident(const String& sev, float a, float j, float w)
+{
   double lat = gps.location.isValid() ? gps.location.lat() : LAT;
   double lng = gps.location.isValid() ? gps.location.lng() : LNG;
-  Serial.printf("ACCIDENT,%s,%.2f,%.1f,%.0f,%.1f,%.6f,%.6f\n",
-                sev.c_str(), a, j, w, lastSpeedKmph, lat, lng);
+
+  Serial.println("\n===== ACCIDENT DETECTED =====");
+
+  Serial.print("Severity: ");
+  Serial.println(sev);
+
+  Serial.print("Heart Rate: ");
+  Serial.print(latestValidBPM);
+  Serial.println(" BPM");
+
+  Serial.print("Health Status: ");
+  Serial.println(getHealthStatus());
+
+  Serial.print("Latitude: ");
+  Serial.println(lat,6);
+
+  Serial.print("Longitude: ");
+  Serial.println(lng,6);
+
   sendBTAccident(lat, lng);
+
   buzz(800);
+}
+
+void readHeartRate()
+{
+  long irValue = particleSensor.getIR();
+
+  if (checkForBeat(irValue))
+  {
+    long delta = millis() - lastBeat;
+    lastBeat = millis();
+
+    beatsPerMinute = 60.0 / (delta / 1000.0);
+
+    if (beatsPerMinute > 20 && beatsPerMinute < 255)
+    {
+      bpm = (int)beatsPerMinute;
+      latestValidBPM = bpm;
+    }
+  }
+}
+
+String getHealthStatus()
+{
+  if (latestValidBPM == 0)
+    return "NO_PULSE";
+
+  if (latestValidBPM < 40)
+    return "CRITICAL_LOW_BPM";
+
+  if (latestValidBPM > 120)
+    return "CRITICAL_SHOCK";
+
+  return "NORMAL";
 }
 
 void setup() {
@@ -99,6 +168,18 @@ void setup() {
   analogSetPinAttenuation(PIEZO_ADC_PIN, PIEZO_ATTEN);
 
   Wire.begin(I2C_SDA, I2C_SCL);
+  if (!particleSensor.begin(Wire))
+  {
+    Serial.println("MAX30102 not found!");
+    while (true);
+  }
+
+  particleSensor.setup();
+  particleSensor.setPulseAmplitudeRed(0x0A);
+  particleSensor.setPulseAmplitudeGreen(0);
+
+  Serial.println("MAX30102 Ready");
+
   mpu.initialize();
   if (!mpu.testConnection()) { Serial.println("MPU6050 not found!"); while(true) delay(1000); }
 
@@ -122,6 +203,7 @@ void setup() {
 }
 
 void loop() {
+  readHeartRate();
   if (Serial.available()) {
     int c = Serial.read();
     if (c == 'T' || c == 't') {
