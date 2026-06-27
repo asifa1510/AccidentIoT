@@ -8,7 +8,7 @@ A compact IoT project using **ESP32**, **MPU6050**, **GPS**, and **Piezo sensor*
 | Component | ESP32 Pin / Power | Purpose |
 |------------|------------------|----------|
 | **MPU6050** | SDA → 21, SCL → 22 | Detects acceleration, jerk, tilt |
-| **NEO-6M GPS** | TX → 16 (RX2), RX → 17 (TX2) | Location & speed |
+| **NEO-6M GPS** | RX → 16 (RX2), TX → 17 (TX2) | Location & speed |
 | **Piezo Sensor** | Signal → 34 | Detects seat vibration / presence |
 | **Buzzer** | + → 18 | Sounds alarm |
 | **IRFZ44N MOSFET + LED** | Gate → 23 | Simulates fuel cutoff | 
